@@ -1,0 +1,118 @@
+name: Google Play CLI Release Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for artifacts (for example v0.1.0)"
+        required: false
+        type: string
+  push:
+    tags:
+      - "gplay-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+            archive: zip
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: google-play-cli/go.sum
+
+      - name: Resolve version label
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#gplay-}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="dev"
+          fi
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.value }}"
+          NAME="gplay_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          BIN="gplay${{ matrix.ext }}"
+
+          mkdir -p dist build
+          (
+            cd google-play-cli
+            GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
+              go build -ldflags "-X main.version=${VERSION}" -o "../build/${BIN}" .
+          )
+
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            mkdir -p "build/${NAME}"
+            mv "build/${BIN}" "build/${NAME}/${BIN}"
+            (cd build && zip -qr "../dist/${NAME}.zip" "${NAME}")
+          else
+            tar -czf "dist/${NAME}.tar.gz" -C build "${BIN}"
+          fi
+
+      - name: Upload artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gplay-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  checksums:
+    runs-on: ubuntu-latest
+    needs: build-artifacts
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gplay-*
+          merge-multiple: true
+          path: dist
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > dist/checksums.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: gplay-checksums
+          path: dist/checksums.txt

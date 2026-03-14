@@ -1,0 +1,77 @@
+name: Google Play CLI Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "google-play-cli/**"
+      - ".github/workflows/google-play-cli.yml"
+  push:
+    branches: [main]
+    paths:
+      - "google-play-cli/**"
+      - ".github/workflows/google-play-cli.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format-and-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: google-play-cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: google-play-cli/go.sum
+
+      - name: Check formatting
+        run: make format-check
+
+      - name: Run lint
+        run: make lint
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: google-play-cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: google-play-cli/go.sum
+
+      - name: Run tests
+        run: make test
+
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: google-play-cli
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: google-play-cli/go.sum
+
+      - name: Build
+        run: make build
